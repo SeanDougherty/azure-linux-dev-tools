@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-package image //nolint:testpackage // Tests unexported boot helpers.
+package image
 
 import (
 	"testing"
