@@ -43,11 +43,9 @@ const (
 	reconnectionTimeout       = 10 * time.Minute
 
 	// Container image reference.
-	containerURI = "github.com/azldev/azldev-test/scenario/container"
-	containerTag = "latest"
-
-	// Container refresh time, timestamp is rounded to this value. If it changes, the container will be rebuilt.
-	containerRefreshTime = time.Hour * 24 // 24 hours
+	containerURI      = "github.com/azldev/azldev-test/scenario/container"
+	containerTag      = "latest"
+	defaultDockerfile = "Dockerfile"
 )
 
 var (
@@ -67,6 +65,8 @@ type ContainerCmdTestCollateral struct {
 	filesDstContents map[string]io.Reader
 	extraMounts      []ContainerMount
 	env              map[string]string
+	dockerfile       string
+	tmpfs            map[string]string
 }
 
 // NewContainerTestCollateral constructs a new, default collateral object for a containerized test.
@@ -82,6 +82,8 @@ func NewContainerTestCollateral(t *testing.T) *ContainerCmdTestCollateral {
 		network:          false,
 		privileged:       false,
 		env:              map[string]string{},
+		dockerfile:       defaultDockerfile,
+		tmpfs:            map[string]string{},
 	}
 }
 
@@ -137,6 +139,28 @@ func (c *ContainerCmdTestCollateral) WithEnv(env map[string]string) *ContainerCm
 	return c
 }
 
+// WithDockerfile selects a Dockerfile from the scenario Docker build context.
+func (c *ContainerCmdTestCollateral) WithDockerfile(dockerfile string) *ContainerCmdTestCollateral {
+	if dockerfile == "" || path.Base(dockerfile) != dockerfile {
+		panic(fmt.Sprintf("invalid scenario Dockerfile %#q", dockerfile))
+	}
+
+	c.dockerfile = dockerfile
+
+	return c
+}
+
+// WithTmpfs adds a tmpfs mount to the container.
+func (c *ContainerCmdTestCollateral) WithTmpfs(destination, options string) *ContainerCmdTestCollateral {
+	if !path.IsAbs(destination) {
+		panic(fmt.Sprintf("tmpfs destination must be absolute: %#q", destination))
+	}
+
+	c.tmpfs[destination] = options
+
+	return c
+}
+
 // Workdir returns the work directory for the test.
 func (c *ContainerCmdTestCollateral) Workdir() string {
 	return c.workdir
@@ -174,9 +198,11 @@ func RunCmdInContainer(
 		t.Skipf("skipping test %s because network tests are disabled", t.Name())
 	}
 
-	// Try to pre-provision the container image. This will run only once, and is best-effort. Errors
-	// will be logged but not returned.
-	cacheContainerImage(t)
+	// Try to pre-provision the default container image. Alternate Dockerfiles
+	// build their own purpose-specific images and must not depend on this image.
+	if collateral.dockerfile == defaultDockerfile {
+		cacheContainerImage(t)
+	}
 
 	return runCmdInContainerImpl(t, collateral, cmd, timeout)
 }
@@ -231,16 +257,15 @@ func runCmdInContainerImpl(
 			FromDockerfile: testcontainers.FromDockerfile{
 				// This path is relative to this file.
 				Context:        dockerPath,
-				Dockerfile:     "Dockerfile",
+				Dockerfile:     collateral.dockerfile,
 				Repo:           containerURI,
-				Tag:            containerTag,
+				Tag:            containerImageTag(collateral.dockerfile),
 				KeepImage:      true,
 				BuildLogWriter: logger.buildLogWriter,
 				BuildArgs: map[string]*string{
-					"UID":       &uidStr,
-					"GID":       &gidStr,
-					"WORK_DIR":  &containerWorkDir,
-					"TIMESTAMP": getRefreshTimestamp(t),
+					"UID":      &uidStr,
+					"GID":      &gidStr,
+					"WORK_DIR": &containerWorkDir,
 				},
 			},
 
@@ -248,6 +273,7 @@ func runCmdInContainerImpl(
 			HostConfigModifier: func(h *container.HostConfig) {
 				h.Binds = binds
 				h.Privileged = collateral.privileged
+				h.Tmpfs = collateral.tmpfs
 			},
 
 			// Run from the workdir.
@@ -277,6 +303,15 @@ func runCmdInContainerImpl(
 	}
 
 	return generateResults(t, req, logger, collateral.workdir)
+}
+
+func containerImageTag(dockerfile string) string {
+	suffix := strings.TrimPrefix(dockerfile, defaultDockerfile)
+	if suffix == "" {
+		return containerTag
+	}
+
+	return containerTag + strings.ReplaceAll(suffix, ".", "-")
 }
 
 func composeContainerFileList(collateral *ContainerCmdTestCollateral,
@@ -443,18 +478,6 @@ func getNetworkConfig(t *testing.T, network bool) []string {
 
 	// Disable the network for the container.
 	return []string{"none"}
-}
-
-// getRefreshTimestamp returns a timestamp which is rounded to the nearest container refresh time. This is used to
-// force the container to be refreshed on a regular basis, e.g. once a day.
-func getRefreshTimestamp(t *testing.T) *string {
-	t.Helper()
-
-	now := time.Now()
-	rounded := now.Truncate(containerRefreshTime)
-	result := rounded.Format(time.RFC3339)
-
-	return &result
 }
 
 func setReaperTimeouts() {

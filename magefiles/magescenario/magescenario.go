@@ -76,6 +76,32 @@ func E2E() error {
 	return nil
 }
 
+// E2EImage runs only the Azure Linux vm-base image build test.
+func E2EImage() error {
+	startTime := time.Now()
+
+	mageutil.MagePrintln(mageutil.MsgStart, "Starting Azure Linux image-build end-to-end test...")
+
+	err := runScenarioGoTest(scenarioGoTestOptions{
+		label:          "image-build end-to-end",
+		buildTag:       "e2e",
+		timeout:        "25m",
+		packagePattern: "./scenario",
+		testSelector:   "^TestAzureLinuxVMBaseImageBuild$",
+	})
+	if err != nil {
+		return err
+	}
+
+	mageutil.MagePrintf(
+		mageutil.MsgSuccess,
+		"Azure Linux image-build end-to-end test complete: %v.\n",
+		time.Since(startTime),
+	)
+
+	return nil
+}
+
 func mageScenarioCommon(doSnapshotUpdate bool) error {
 	options := scenarioGoTestOptions{
 		label:            "scenario",
@@ -113,6 +139,9 @@ type scenarioGoTestOptions struct {
 	// doSnapshotUpdate, when true, sets the env var that puts the snapshot
 	// helper into update mode. Only meaningful for the scenario tier.
 	doSnapshotUpdate bool
+	// testSelector, when set, is passed to 'go test -run' to execute one
+	// focused test without running the rest of the selected tier.
+	testSelector string
 }
 
 func runScenarioGoTest(options scenarioGoTestOptions) error {
@@ -138,12 +167,19 @@ func runScenarioGoTest(options scenarioGoTestOptions) error {
 
 	// '-count=1' causes the cache to be ignored for scenario tests so they always re-run (it would only rebuild if
 	// we changed the test code itself, not the application code).
-	output, err := sh.OutputWith(env, mg.GoCmd(), "test",
-		"-tags="+options.buildTag,
-		"-timeout="+options.timeout,
+	args := []string{
+		"test",
+		"-tags=" + options.buildTag,
+		"-timeout=" + options.timeout,
 		"-count=1",
-		options.packagePattern,
-	)
+	}
+	if options.testSelector != "" {
+		args = append(args, "-run="+options.testSelector)
+	}
+
+	args = append(args, options.packagePattern)
+
+	output, err := sh.OutputWith(env, mg.GoCmd(), args...)
 	if err != nil {
 		titledLabel := strings.ToUpper(options.label[:1]) + options.label[1:]
 		mageutil.MagePrintf(mageutil.MsgError, "%s test failed; details follow.\n", titledLabel)

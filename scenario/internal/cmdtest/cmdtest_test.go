@@ -208,6 +208,18 @@ func Test_containerTestParamsRun(t *testing.T) {
 	})
 }
 
+func TestContainerImageOptions(t *testing.T) {
+	t.Parallel()
+
+	params := NewScenarioTest().
+		InContainer().
+		WithDockerfile("Dockerfile.image-builder").
+		WithTmpfs("/workdir/build", "rw,exec,mode=1777")
+
+	assert.Equal(t, "Dockerfile.image-builder", params.Dockerfile)
+	assert.Equal(t, map[string]string{"/workdir/build": "rw,exec,mode=1777"}, params.Tmpfs)
+}
+
 func Test_OverrideCommands(t *testing.T) {
 	t.Parallel()
 

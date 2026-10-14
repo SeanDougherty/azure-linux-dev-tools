@@ -1,10 +1,5 @@
-FROM mcr.microsoft.com/azurelinux/base/core:3.0
+FROM mcr.microsoft.com/azurelinux/base/core:3.0@sha256:1324a2cf7ed34e5f48a1022816b205782b86c7305651658e611dcd3d30756751
 SHELL ["/bin/bash", "-c"]
-
-# Intentionally pass a timestamp to the image build so that we can refresh
-# the image on a regular basis by invalidating the layer.
-ARG TIMESTAMP
-RUN echo "Image built at ${TIMESTAMP}" > /etc/azldev_scenario_testing_timestamp
 
 ARG UID
 ARG GID

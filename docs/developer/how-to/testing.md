@@ -6,6 +6,7 @@ This document provides guidelines for writing and maintaining tests within the A
 
 - [Unit Tests](#unit-tests)
 - [Scenario Tests](#scenario-tests)
+- [End-to-End Tests](#end-to-end-tests)
 - [Mutation Testing](#mutation-testing)
 - [Test Utilities](#test-utilities)
 - [Mocking dependencies](#mocking-dependencies)
@@ -35,6 +36,29 @@ This document provides guidelines for writing and maintaining tests within the A
 - Include both positive and negative test cases
 - Use `mage scenarioUpdate` when test expectations change and snapshots need updating
 - Use existing test helpers in `scenario/internal/cmdtest`
+
+## End-to-End Tests
+
+Tests tagged `e2e` are excluded from `mage scenario` and `mage all`. Run the
+general end-to-end suite with:
+
+```bash
+mage e2e
+```
+
+### Azure Linux image build
+
+`mage e2eImage` runs only the Azure Linux `vm-base` image-build test. It checks
+out the full commit recorded in
+`scenario/testdata/image-build/azurelinux-revision`, builds the current azldev
+binary, and invokes the real `azldev image build vm-base` command in a dedicated
+privileged KIWI container.
+
+The Azure Linux checkout is mounted read-only. KIWI's `base/build` and
+`base/out` directories use writable tmpfs mounts, and the resulting raw disk is
+converted to a compressed qcow2 and validated with `qemu-img check`. The
+privileged container is restricted to this image-construction test; ordinary
+scenario and e2e containers remain unchanged.
 
 ## Mutation Testing
 

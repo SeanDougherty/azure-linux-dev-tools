@@ -92,3 +92,16 @@ updates:
         applies-to: version-updates
         patterns:
           - "*"
+
+  # Scenario container base images
+  - package-ecosystem: "docker"
+    directory: "/scenario/docker"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      dependabot-docker-scenario:
+        applies-to: version-updates
+        patterns:
+          - "*"
