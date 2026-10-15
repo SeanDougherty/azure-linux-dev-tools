@@ -48,17 +48,16 @@ mage e2e
 
 ### Azure Linux image build
 
-`mage e2eImage` runs only the Azure Linux `vm-base` image-build test. It checks
-out the full commit recorded in
-`scenario/testdata/image-build/azurelinux-revision`, builds the current azldev
-binary, and invokes the real `azldev image build vm-base` command in a dedicated
-privileged KIWI container.
+`mage e2e -target=image` runs only the Azure Linux image-build test. It checks out the
+current head of the Azure Linux `4.0` branch, records the resolved commit, builds
+the current azldev binary, and invokes the real
+`azldev image build 1p-vm-base-gen2` command in a dedicated privileged KIWI
+container.
 
-The Azure Linux checkout is mounted read-only. KIWI's `base/build` and
-`base/out` directories use writable tmpfs mounts, and the resulting raw disk is
-converted to a compressed qcow2 and validated with `qemu-img check`. The
-privileged container is restricted to this image-construction test; ordinary
-scenario and e2e containers remain unchanged.
+The checkout and KIWI work tree live entirely in the disposable builder
+container. Only the resolved source revision and checked qcow2 are written to a
+host artifact mount. The privileged container is restricted to this
+image-construction test; ordinary scenario and e2e containers remain unchanged.
 
 ## Mutation Testing
 

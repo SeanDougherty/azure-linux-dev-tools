@@ -22,8 +22,8 @@ RUN groupadd -f -g "${GID}" testgroup && \
     chmod 0440 /etc/sudoers.d/azldev-kiwi && \
     visudo -cf /etc/sudoers.d/azldev-kiwi
 
-COPY build-vm-base.sh /usr/local/bin/build-vm-base
-RUN chmod 0755 /usr/local/bin/build-vm-base
+COPY build-image.sh /usr/local/bin/build-image
+RUN chmod 0755 /usr/local/bin/build-image
 
 USER testuser:testgroup
 WORKDIR ${WORK_DIR}

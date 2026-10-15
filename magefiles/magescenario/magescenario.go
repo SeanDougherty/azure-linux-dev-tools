@@ -5,6 +5,7 @@ package magescenario
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -18,6 +19,11 @@ import (
 )
 
 var ErrScenario = errors.New("scenario test failed")
+
+const (
+	e2eTargetAll   = "all"
+	e2eTargetImage = "image"
+)
 
 // Scenario runs the scenario tests.
 func Scenario() error {
@@ -43,17 +49,21 @@ func ScenarioUpdate() error {
 	return nil
 }
 
-// E2E runs the end-to-end tests. These are tagged with the `e2e` build tag
+// E2E runs one of: [all, image]. The default is all.
+// These tests are tagged with the `e2e` build tag
 // (separate from `scenario`) so that they do not run as part of `mage scenario`,
 // `mage scenarioUpdate`, or `mage all` — they are intentionally heavier
 // (network access, large clones, full mock pipelines) and meant to be run
 // from CI on a dedicated job.
-func E2E() error {
+func E2E(target *string) error {
 	startTime := time.Now()
 
-	mageutil.MagePrintln(mageutil.MsgStart, "Starting end-to-end tests...")
+	selectedTarget := e2eTargetAll
+	if target != nil {
+		selectedTarget = *target
+	}
 
-	err := runScenarioGoTest(scenarioGoTestOptions{
+	options := scenarioGoTestOptions{
 		label: "end-to-end",
 		// Use the dedicated 'e2e' tag so that scenario tests are excluded.
 		buildTag: "e2e",
@@ -66,36 +76,31 @@ func E2E() error {
 		// internal-package tests — already covered by 'mage scenario' — are
 		// not duplicated here.
 		packagePattern: "./scenario",
-	})
-	if err != nil {
-		return err
 	}
 
-	mageutil.MagePrintf(mageutil.MsgSuccess, "End-to-end tests complete: %v.\n", time.Since(startTime))
+	switch selectedTarget {
+	case e2eTargetAll:
+	case e2eTargetImage:
+		options.label = "image-build end-to-end"
+		options.timeout = "25m"
+		options.testSelector = "^TestAzureLinuxImageBuild$"
+	default:
+		return fmt.Errorf(
+			"%w: unknown end-to-end target %#q; available targets: %q",
+			ErrScenario,
+			selectedTarget,
+			[]string{e2eTargetAll, e2eTargetImage},
+		)
+	}
 
-	return nil
-}
-
-// E2EImage runs only the Azure Linux vm-base image build test.
-func E2EImage() error {
-	startTime := time.Now()
-
-	mageutil.MagePrintln(mageutil.MsgStart, "Starting Azure Linux image-build end-to-end test...")
-
-	err := runScenarioGoTest(scenarioGoTestOptions{
-		label:          "image-build end-to-end",
-		buildTag:       "e2e",
-		timeout:        "25m",
-		packagePattern: "./scenario",
-		testSelector:   "^TestAzureLinuxVMBaseImageBuild$",
-	})
-	if err != nil {
+	mageutil.MagePrintf(mageutil.MsgStart, "Starting %s tests...\n", options.label)
+	if err := runScenarioGoTest(options); err != nil {
 		return err
 	}
 
 	mageutil.MagePrintf(
 		mageutil.MsgSuccess,
-		"Azure Linux image-build end-to-end test complete: %v.\n",
+		"End-to-end tests complete: %v.\n",
 		time.Since(startTime),
 	)
 

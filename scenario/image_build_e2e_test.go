@@ -10,7 +10,6 @@ import (
 	"encoding/hex"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,10 +23,12 @@ import (
 
 const (
 	azureLinuxRepositoryURL = "https://github.com/microsoft/azurelinux.git"
-	vmBaseBuildTimeout      = 15 * time.Minute
+	azureLinuxImageBranch   = "4.0"
+	azureLinuxImage         = "1p-vm-base-gen2"
+	imageBuildTimeout       = 15 * time.Minute
 )
 
-func TestAzureLinuxVMBaseImageBuild(t *testing.T) {
+func TestAzureLinuxImageBuild(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping long test")
 	}
@@ -35,42 +36,20 @@ func TestAzureLinuxVMBaseImageBuild(t *testing.T) {
 		t.Skip("skipping image build because network tests are disabled")
 	}
 
-	revisionBytes, err := os.ReadFile(filepath.Join("testdata", "image-build", "azurelinux-revision"))
-	require.NoError(t, err)
-	revision := strings.TrimSpace(string(revisionBytes))
-	require.Len(t, revision, 40, "Azure Linux revision must be a full commit SHA")
-
-	checkout := filepath.Join(t.TempDir(), "azurelinux")
-	require.NoError(t, os.Mkdir(checkout, 0o700))
-
-	runHostCommand(t, checkout, "git", "init")
-	runHostCommand(t, checkout, "git", "remote", "add", "origin", azureLinuxRepositoryURL)
-	runHostCommand(t, checkout, "git", "fetch", "--depth=1", "origin", revision)
-	runHostCommand(t, checkout, "git", "checkout", "--detach", "FETCH_HEAD")
-	require.NoError(t, os.MkdirAll(filepath.Join(checkout, "base", "build"), 0o700))
-	require.NoError(t, os.MkdirAll(filepath.Join(checkout, "base", "out"), 0o700))
-
 	artifactDirectory := t.TempDir()
 	start := time.Now()
 
 	test := cmdtest.NewScenarioTest().
-		WithCustomCmd("build-vm-base").
-		WithArgs("x86_64").
-		WithTimeout(vmBaseBuildTimeout).
+		WithCustomCmd("build-image").
+		WithArgs("x86_64", azureLinuxImage, azureLinuxRepositoryURL, azureLinuxImageBranch).
+		WithTimeout(imageBuildTimeout).
 		InContainer().
 		WithDockerfile("Dockerfile.image-builder").
 		WithPrivilege().
 		WithNetwork().
 		WithExtraMounts([]containertest.ContainerMount{
-			containertest.NewContainerMount(
-				checkout,
-				"/azurelinux",
-				[]containertest.ContainerMountFlag{containertest.ContainerMountFlagReadOnly},
-			),
 			containertest.NewContainerMount(artifactDirectory, "/artifacts", nil),
-		}).
-		WithTmpfs("/azurelinux/base/build", "rw,exec,mode=1777").
-		WithTmpfs("/azurelinux/base/out", "rw,mode=1777")
+		})
 
 	results, err := test.Run(t)
 	require.NoError(t, err)
@@ -78,7 +57,12 @@ func TestAzureLinuxVMBaseImageBuild(t *testing.T) {
 	t.Logf("Image build standard error:\n%s", results.Stderr)
 	require.Zero(t, results.ExitCode)
 
-	imagePath := filepath.Join(artifactDirectory, "vm-base.qcow2")
+	revisionBytes, err := os.ReadFile(filepath.Join(artifactDirectory, "source-revision"))
+	require.NoError(t, err)
+	revision := strings.TrimSpace(string(revisionBytes))
+	require.Len(t, revision, 40, "resolved Azure Linux revision must be a full commit SHA")
+
+	imagePath := filepath.Join(artifactDirectory, azureLinuxImage+".qcow2")
 	image, err := os.Open(imagePath)
 	require.NoError(t, err)
 	defer image.Close()
@@ -93,19 +77,11 @@ func TestAzureLinuxVMBaseImageBuild(t *testing.T) {
 	require.Positive(t, info.Size())
 
 	t.Logf(
-		"Built Azure Linux vm-base revision %s in %s: size=%d sha256=%s",
+		"Built Azure Linux image %s at revision %s in %s: size=%d sha256=%s",
+		azureLinuxImage,
 		revision,
 		time.Since(start),
 		info.Size(),
 		sha,
 	)
-}
-
-func runHostCommand(t *testing.T, directory string, program string, args ...string) {
-	t.Helper()
-
-	command := exec.CommandContext(t.Context(), program, args...)
-	command.Dir = directory
-	output, err := command.CombinedOutput()
-	require.NoError(t, err, "run %s %s:\n%s", program, strings.Join(args, " "), output)
 }

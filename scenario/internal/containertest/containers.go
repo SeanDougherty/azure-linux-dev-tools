@@ -66,7 +66,6 @@ type ContainerCmdTestCollateral struct {
 	extraMounts      []ContainerMount
 	env              map[string]string
 	dockerfile       string
-	tmpfs            map[string]string
 }
 
 // NewContainerTestCollateral constructs a new, default collateral object for a containerized test.
@@ -83,7 +82,6 @@ func NewContainerTestCollateral(t *testing.T) *ContainerCmdTestCollateral {
 		privileged:       false,
 		env:              map[string]string{},
 		dockerfile:       defaultDockerfile,
-		tmpfs:            map[string]string{},
 	}
 }
 
@@ -146,17 +144,6 @@ func (c *ContainerCmdTestCollateral) WithDockerfile(dockerfile string) *Containe
 	}
 
 	c.dockerfile = dockerfile
-
-	return c
-}
-
-// WithTmpfs adds a tmpfs mount to the container.
-func (c *ContainerCmdTestCollateral) WithTmpfs(destination, options string) *ContainerCmdTestCollateral {
-	if !path.IsAbs(destination) {
-		panic(fmt.Sprintf("tmpfs destination must be absolute: %#q", destination))
-	}
-
-	c.tmpfs[destination] = options
 
 	return c
 }
@@ -273,7 +260,6 @@ func runCmdInContainerImpl(
 			HostConfigModifier: func(h *container.HostConfig) {
 				h.Binds = binds
 				h.Privileged = collateral.privileged
-				h.Tmpfs = collateral.tmpfs
 			},
 
 			// Run from the workdir.
