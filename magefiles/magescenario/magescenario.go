@@ -94,6 +94,7 @@ func E2E(target *string) error {
 	}
 
 	mageutil.MagePrintf(mageutil.MsgStart, "Starting %s tests...\n", options.label)
+
 	if err := runScenarioGoTest(options); err != nil {
 		return err
 	}
